@@ -1,4 +1,8 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8001/api";
+let rawBaseUrl = import.meta.env.VITE_API_URL || "http://localhost:8001";
+if (rawBaseUrl.endsWith("/")) {
+  rawBaseUrl = rawBaseUrl.slice(0, -1);
+}
+const API_BASE_URL = rawBaseUrl.endsWith("/api") ? rawBaseUrl : `${rawBaseUrl}/api`;
 
 export async function visualizeCode(code, maxSteps = 1000, timeout = 2.0) {
   try {
