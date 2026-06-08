@@ -1,0 +1,19 @@
+# Python cache files
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+
+# Node & Frontend
+node_modules/
+dist/
+.env*
+.DS_Store
+.vscode/
+.idea/
