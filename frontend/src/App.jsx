@@ -211,11 +211,22 @@ export default function App() {
   // Keyboard Shortcuts Hook
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (
-        document.activeElement.tagName === "INPUT" ||
-        document.activeElement.tagName === "TEXTAREA" ||
-        document.activeElement.classList.contains("inputarea")
-      ) {
+      const activeEl = document.activeElement;
+      const target = e.target;
+
+      const isTyping = (el) => {
+        if (!el) return false;
+        const tagName = el.tagName;
+        return (
+          tagName === "INPUT" ||
+          tagName === "TEXTAREA" ||
+          el.isContentEditable ||
+          el.classList?.contains("inputarea") ||
+          (typeof el.closest === "function" && el.closest(".monaco-editor"))
+        );
+      };
+
+      if (isTyping(activeEl) || isTyping(target)) {
         return;
       }
 

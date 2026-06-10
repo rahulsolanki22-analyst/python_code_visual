@@ -130,9 +130,9 @@ Start the FastAPI development server:
 ```bash
 python main.py
 # or
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 ```
-The API is active at `http://localhost:8000`.
+The API is active at `http://localhost:8001`.
 
 ### 2. Frontend Development Setup
 Navigate to the `frontend/` folder:
