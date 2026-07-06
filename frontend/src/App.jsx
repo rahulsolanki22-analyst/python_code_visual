@@ -1,20 +1,16 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { 
-  Terminal, 
   Layers, 
   Variable, 
   Code2, 
   Cpu, 
-  BookOpen, 
   Keyboard,
   Info,
-  ListFilter,
   Sun,
   Moon,
   Sparkles,
   BarChart3,
   Network,
-  Edit2,
   Play
 } from "lucide-react";
 
@@ -67,7 +63,6 @@ export default function App() {
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0);
   const [showShortcutsHUD, setShowShortcutsHUD] = useState(false);
   const [activeTab, setActiveTab] = useState("auto"); // "auto", "array", "heap", "stack", "variables"
-  const [varsExpanded, setVarsExpanded] = useState(true);
 
   // Dynamic code changer switching to custom code
   const handleCodeChange = useCallback((newCode) => {
