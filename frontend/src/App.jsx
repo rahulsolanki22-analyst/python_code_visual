@@ -14,7 +14,8 @@ import {
   Sparkles,
   BarChart3,
   Network,
-  Edit2
+  Edit2,
+  Play
 } from "lucide-react";
 
 import EditorPanel from "./components/EditorPanel";
@@ -24,6 +25,7 @@ import StackFrames from "./components/StackFrames";
 import ArrayVisualizer from "./components/ArrayVisualizer";
 import HeapVisualizer from "./components/HeapVisualizer";
 import TerminalConsole from "./components/TerminalConsole";
+import StepExplanation from "./components/StepExplanation";
 
 import { EXAMPLES } from "./constants/examples";
 import { visualizeCode } from "./services/api";
@@ -65,6 +67,7 @@ export default function App() {
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0);
   const [showShortcutsHUD, setShowShortcutsHUD] = useState(false);
   const [activeTab, setActiveTab] = useState("auto"); // "auto", "array", "heap", "stack", "variables"
+  const [varsExpanded, setVarsExpanded] = useState(true);
 
   // Dynamic code changer switching to custom code
   const handleCodeChange = useCallback((newCode) => {
@@ -256,6 +259,7 @@ export default function App() {
   const activeLine = currentStepData ? currentStepData.line : null;
   const scopes = currentStepData ? currentStepData.scopes : [];
   const heap = currentStepData ? currentStepData.heap : {};
+  const prevHeap = prevStepData ? prevStepData.heap : {};
   const stdout = currentStepData ? currentStepData.stdout : "";
 
   // Variables resolution
@@ -290,6 +294,40 @@ export default function App() {
     );
   }, [variables, heap]);
 
+  const comparisonsCount = useMemo(() => {
+    if (!trace) return 0;
+    let count = 0;
+    const lines = code.split("\n");
+    for (let s = 0; s < currentStep; s++) {
+      const stepData = trace[s];
+      const lineNum = stepData.line;
+      const lineCode = lines[lineNum - 1] || "";
+      const trimmed = lineCode.trim();
+      if (trimmed.includes("==") || trimmed.includes("<") || trimmed.includes(">") || trimmed.includes("!=") || trimmed.includes(" in ")) {
+        if (!trimmed.startsWith("#") && !trimmed.startsWith("def ")) {
+          count++;
+        }
+      }
+    }
+    return count;
+  }, [trace, currentStep, code]);
+
+  const assignmentsCount = useMemo(() => {
+    if (!trace) return 0;
+    let count = 0;
+    const lines = code.split("\n");
+    for (let s = 0; s < currentStep; s++) {
+      const stepData = trace[s];
+      const lineNum = stepData.line;
+      const lineCode = lines[lineNum - 1] || "";
+      const trimmed = lineCode.trim();
+      if (trimmed.includes("=") && !trimmed.includes("==") && !trimmed.includes("!=") && !trimmed.includes("<=") && !trimmed.includes(">=") && !trimmed.startsWith("def ") && !trimmed.startsWith("if ") && !trimmed.startsWith("elif ") && !trimmed.startsWith("while ") && !trimmed.startsWith("#")) {
+        count++;
+      }
+    }
+    return count;
+  }, [trace, currentStep, code]);
+
   // Smart visualization tab selection
   const computedTab = useMemo(() => {
     if (activeTab !== "auto") return activeTab;
@@ -299,48 +337,95 @@ export default function App() {
     return "variables";
   }, [activeTab, hasHeapNodes, hasLists, scopes.length]);
 
+  const status = useMemo(() => {
+    if (!trace) {
+      return {
+        label: "Trace Ready",
+        bgColor: "bg-slate-500/10 dark:bg-slate-400/10",
+        borderColor: "border-slate-500/20 dark:border-slate-400/20",
+        textColor: "text-slate-600 dark:text-slate-400",
+        dotColor: "bg-slate-400"
+      };
+    }
+    if (isPlaying) {
+      return {
+        label: "Running",
+        bgColor: "bg-brand-blue/10",
+        borderColor: "border-brand-blue/20",
+        textColor: "text-brand-blue",
+        dotColor: "bg-brand-blue animate-ping"
+      };
+    }
+    if (currentStep === trace.length) {
+      return {
+        label: "Completed",
+        bgColor: "bg-emerald-500/10",
+        borderColor: "border-emerald-500/20",
+        textColor: "text-emerald-500",
+        dotColor: "bg-emerald-500"
+      };
+    }
+    return {
+      label: "Paused",
+      bgColor: "bg-amber-500/10",
+      borderColor: "border-amber-500/20",
+      textColor: "text-amber-500",
+      dotColor: "bg-amber-500"
+    };
+  }, [trace, isPlaying, currentStep]);
+
   return (
     <div className="h-screen bg-dark-950 text-slate-100 flex flex-col subpixel-antialiased overflow-hidden select-none">
       
       {/* Top Navigation Bar */}
-      <header className="px-6 py-3 bg-dark-900 border-b border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4 flex-none z-50">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-brand-blue/10 rounded-xl border border-brand-blue/20 text-brand-blue shadow-glow-blue">
-            <Cpu size={18} className="animate-pulse" />
+      <header className="px-6 py-3 bg-dark-900 border-b border-white/5 flex flex-col md:flex-row items-center justify-between gap-4 flex-none z-50">
+        
+        {/* Title, Subtitle and Status Indicator */}
+        <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-brand-blue/10 rounded-xl border border-brand-blue/20 text-brand-blue shadow-glow-blue flex-none">
+              <Cpu size={18} className="animate-pulse" />
+            </div>
+            <div>
+              <h1 className="text-sm font-bold tracking-wide text-slate-100 leading-none">
+                PYTHON DSA VISUALIZER
+              </h1>
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">
+                Interactive Algorithm Learning Platform
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-sm font-bold tracking-wide text-slate-100 leading-none">
-              PYTHON DSA VISUALIZER
-            </h1>
-            <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">
-              Interactive Algorithm Learning Platform
-            </p>
+          
+          {/* Status Indicator */}
+          <div className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 select-none transition-all duration-300 ${status.bgColor} ${status.borderColor} ${status.textColor}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${status.dotColor}`} />
+            <span>{status.label}</span>
           </div>
         </div>
 
-        {/* Header Options & Metrics */}
-        <div className="flex items-center gap-3.5 w-full sm:w-auto justify-end">
+        {/* Header Options & Controls */}
+        <div className="flex items-center justify-between md:justify-end gap-3.5 w-full md:w-auto flex-wrap">
+          {/* Statistic Cards (Time & Space Complexity) */}
           {(trace || selectedExample === "custom") && (
-            <div className="hidden md:flex items-center gap-2 select-none">
-              {/* Time Complexity */}
-              <div className="px-2.5 py-1 bg-brand-blue/10 border border-brand-blue/20 text-brand-blue text-[11px] font-bold rounded-lg uppercase tracking-wider">
-                Time: {displayTime}
+            <div className="flex items-center gap-2 select-none">
+              <div className="px-3 py-1 bg-brand-blue/5 border border-brand-blue/15 text-brand-blue rounded-xl flex flex-col justify-center min-w-[72px]">
+                <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider">Time</span>
+                <span className="text-xs font-black leading-none mt-0.5">{displayTime}</span>
               </div>
-
-              {/* Space Complexity */}
-              <div className="px-2.5 py-1 bg-brand-purple/10 border border-brand-purple/20 text-brand-purple text-[11px] font-bold rounded-lg uppercase tracking-wider">
-                Space: {displaySpace}
+              <div className="px-3 py-1 bg-brand-purple/5 border border-brand-purple/15 text-brand-purple rounded-xl flex flex-col justify-center min-w-[72px]">
+                <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider">Space</span>
+                <span className="text-xs font-black leading-none mt-0.5">{displaySpace}</span>
               </div>
             </div>
           )}
 
-          {/* Algorithm Selector */}
           <div className="flex items-center gap-2">
+            {/* Algorithm Selector */}
             <select
               value={selectedExample}
               onChange={handleExampleChange}
               disabled={loading}
-              className="text-xs font-bold bg-dark-800 hover:bg-dark-700 text-slate-200 px-3 py-1.5 rounded-xl border border-white/5 focus:outline-none focus:ring-1 focus:ring-brand-blue/40 transition duration-150 cursor-pointer shadow-sm"
+              className="text-xs font-bold bg-dark-800 hover:bg-dark-700 text-slate-200 px-3 py-2 rounded-xl border border-white/5 focus:outline-none focus:ring-2 focus:ring-brand-blue/50 transition duration-150 cursor-pointer shadow-sm"
             >
               {Object.entries(EXAMPLES).map(([key, val]) => (
                 <option key={key} value={key}>
@@ -348,30 +433,43 @@ export default function App() {
                 </option>
               ))}
             </select>
+
+            {/* Visually Prominent Run Trace Button */}
+            <button
+              onClick={handleVisualize}
+              disabled={loading}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold shadow-sm transition duration-150 glow-btn cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-blue/50 focus:ring-offset-2 focus:ring-offset-dark-900 ${
+                loading
+                  ? "bg-brand-blue/50 text-white/50 cursor-not-allowed border border-brand-blue/20"
+                  : "bg-brand-blue hover:bg-brand-blue/90 text-white shadow-glow-blue hover:scale-[1.02] active:scale-[0.98] border border-brand-blue/20"
+              }`}
+            >
+              <Play size={12} fill="currentColor" />
+              <span>{loading ? "Tracing..." : "Run Trace"}</span>
+            </button>
           </div>
 
-          {/* Theme Toggle button */}
-          <button
-            onClick={() => setTheme(prev => prev === "light" ? "dark" : "light")}
-            className="p-2 rounded-xl border bg-white/5 border-white/5 hover:bg-white/10 text-slate-500 hover:text-slate-200 transition duration-150 cursor-pointer"
-            title={theme === "light" ? "Switch to Dark Mode" : "Switch to Light Mode"}
-          >
-            {theme === "light" ? <Moon size={14} /> : <Sun size={14} />}
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Theme Toggle button */}
+            <button
+              onClick={() => setTheme(prev => prev === "light" ? "dark" : "light")}
+              className="p-2 rounded-xl border bg-white/5 border-white/5 hover:bg-white/10 text-slate-500 hover:text-slate-200 transition duration-150 cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-blue/50"
+              title={theme === "light" ? "Switch to Dark Mode" : "Switch to Light Mode"}
+            >
+              {theme === "light" ? <Moon size={14} /> : <Sun size={14} />}
+            </button>
 
-
-
-
-          {/* Keyboard HUD button */}
-          <button
-            onClick={() => setShowShortcutsHUD(!showShortcutsHUD)}
-            className={`p-2 rounded-xl border text-slate-500 hover:text-slate-200 transition duration-150 ${
-              showShortcutsHUD ? "bg-white/10 border-white/20" : "bg-white/5 border-white/5 hover:bg-white/10"
-            }`}
-            title="Keyboard Shortcuts"
-          >
-            <Keyboard size={14} />
-          </button>
+            {/* Keyboard HUD button */}
+            <button
+              onClick={() => setShowShortcutsHUD(!showShortcutsHUD)}
+              className={`p-2 rounded-xl border text-slate-500 hover:text-slate-200 transition duration-150 focus:outline-none focus:ring-2 focus:ring-brand-blue/50 ${
+                showShortcutsHUD ? "bg-white/10 border-white/20" : "bg-white/5 border-white/5 hover:bg-white/10"
+              }`}
+              title="Keyboard Shortcuts"
+            >
+              <Keyboard size={14} />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -407,15 +505,40 @@ export default function App() {
         {/* Left Column: Monaco Code Editor (~40% space) */}
         <div className="lg:col-span-4 flex flex-col gap-4 h-full overflow-hidden">
           {/* Algorithm Info Card */}
-          <div className="bg-dark-900 border border-white/5 rounded-2xl p-4 text-xs text-slate-400 shadow-glass-inner flex flex-col gap-1.5 flex-none">
-            <div className="flex items-center gap-2 text-slate-300 select-none">
-              <BookOpen size={14} className="text-brand-cyan" />
-              <span className="font-bold tracking-wider uppercase text-[11px] sm:text-xs">Algorithm details</span>
+          <div className="bg-dark-900 border border-white/5 rounded-2xl p-4 shadow-glass-inner flex flex-col gap-3 flex-none">
+            {/* Header: Title, Category & Difficulty */}
+            <div className="flex items-center justify-between gap-3 border-b border-white/5 pb-2 select-none flex-wrap">
+              <div className="flex items-center gap-2 text-slate-300">
+                <Info size={14} className="text-brand-cyan" />
+                <span className="font-bold tracking-wider uppercase text-[11px]">Algorithm Details</span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {/* Category Badge */}
+                <span className="px-2 py-0.5 bg-brand-blue/10 border border-brand-blue/20 text-brand-blue rounded text-[9px] font-extrabold uppercase">
+                  {currentExample.category}
+                </span>
+                {/* Difficulty Badge */}
+                {selectedExample !== "custom" && (
+                  <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase border ${
+                    selectedExample === "dfs" || selectedExample === "bfs"
+                      ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                      : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                  }`}>
+                    {selectedExample === "dfs" || selectedExample === "bfs" ? "Medium" : "Easy"}
+                  </span>
+                )}
+              </div>
             </div>
-            <p className="leading-relaxed text-xs sm:text-[13px] text-slate-300">
-              <span className="font-bold text-slate-200">{currentExample.name}:</span>{" "}
-              {currentExample.description}
-            </p>
+
+            {/* Content: Name and Description */}
+            <div className="flex flex-col gap-1">
+              <h3 className="text-xs sm:text-sm font-bold text-slate-200 uppercase tracking-wide select-text">
+                {currentExample.name}
+              </h3>
+              <p className="text-[11px] sm:text-xs text-slate-400 leading-relaxed select-text font-medium">
+                {currentExample.description}
+              </p>
+            </div>
           </div>
 
           {/* Monaco Editor Container */}
@@ -504,168 +627,219 @@ export default function App() {
                   </div>
 
                   {/* Step counter info badge */}
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-dark-950 border border-white/5 text-slate-400 text-xs font-mono font-bold rounded-lg uppercase tracking-wider shadow-inner">
+                  <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-dark-950 border border-white/5 text-slate-400 text-xs font-mono font-bold rounded-xl uppercase tracking-wider shadow-inner select-none">
                     <span>Step {currentStep} of {trace ? trace.length : 1}</span>
                   </div>
                 </div>
 
                 {/* Main Tab Render Window */}
                 <div className="flex-1 overflow-y-auto min-h-0 relative pr-1 scrollbar-thin">
-                  {computedTab === "array" && (
-                    <div className="animate-in fade-in duration-200 flex flex-col gap-4">
-                      <ArrayVisualizer
-                        variables={variables}
-                        prevVariables={prevVariables}
-                        heap={heap}
-                      />
-                    </div>
-                  )}
+                  {loading ? (
+                    <div className="h-full flex flex-col justify-center items-center gap-6 animate-in fade-in duration-300 py-8">
+                      {/* Spinner & Message */}
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="relative">
+                          {/* Outer pulsing ring */}
+                          <div className="w-12 h-12 rounded-full border-2 border-brand-blue/20 border-t-brand-blue animate-spin" />
+                          {/* Inner pulsing core */}
+                          <div className="absolute inset-2 bg-brand-blue/10 rounded-full animate-pulse flex items-center justify-center">
+                            <Cpu size={16} className="text-brand-blue" />
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-center gap-1 mt-1 text-center">
+                          <span className="text-xs font-bold uppercase tracking-widest text-slate-300">Generating Execution Trace</span>
+                          <span className="text-[10px] text-slate-500 font-medium">Running Python script in sandbox environment...</span>
+                        </div>
+                      </div>
 
-                  {computedTab === "heap" && (
-                    <div className="animate-in fade-in duration-200">
-                      <div className="h-[360px]">
-                        <HeapVisualizer variables={variables} heap={heap} />
+                      {/* Visual Skeleton Card */}
+                      <div className="w-full max-w-sm flex flex-col gap-4 p-5 rounded-2xl border border-white/5 bg-white/5 select-none opacity-50">
+                        <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                          <div className="h-3.5 bg-white/10 rounded w-1/3 animate-pulse" />
+                          <div className="h-3 bg-white/10 rounded w-1/4 animate-pulse" />
+                        </div>
+                        <div className="flex gap-2">
+                          <div className="h-10 bg-white/10 rounded flex-1 animate-pulse" />
+                          <div className="h-10 bg-white/10 rounded flex-1 animate-pulse" />
+                          <div className="h-10 bg-white/10 rounded flex-1 animate-pulse" />
+                          <div className="h-10 bg-white/10 rounded flex-1 animate-pulse" />
+                        </div>
+                        <div className="h-12 bg-white/10 rounded w-full animate-pulse mt-1" />
                       </div>
                     </div>
-                  )}
-
-                  {computedTab === "stack" && (
-                    <div className="animate-in fade-in duration-200">
-                      <div className="h-full">
-                        <StackFrames
-                          scopes={scopes}
-                          selectedFrameIndex={selectedFrameIndex}
-                          setSelectedFrameIndex={setSelectedFrameIndex}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {computedTab === "variables" && (
-                    <div className="bg-dark-950/40 p-4 rounded-xl border border-white/5 animate-in fade-in duration-200">
-                      <>
-                        <div className="flex items-center gap-1.5 pb-2 border-b border-white/5 mb-3 select-none">
-                          <Variable size={16} className="text-brand-cyan" />
-                          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                            Local Variables ({selectedScope ? selectedScope.name : "none"})
-                          </span>
+                  ) : (
+                    <div className="animate-in fade-in duration-500 h-full">
+                      {computedTab === "array" && (
+                        <div className="animate-in fade-in duration-200 flex flex-col gap-4">
+                          <ArrayVisualizer
+                            variables={variables}
+                            prevVariables={prevVariables}
+                            heap={heap}
+                            prevHeap={prevHeap}
+                          />
                         </div>
-                        <VariableList
-                          variables={variables}
-                          prevVariables={prevVariables}
-                          heap={heap}
-                          onMutateVariable={handleMutateVariable}
-                        />
-                      </>
-                    </div>
-                  )}
+                      )}
 
-                  {computedTab === "insights" && (
-                    <div className="bg-dark-950/40 p-4 rounded-xl border border-white/5 animate-in fade-in duration-200 flex flex-col gap-4">
-                      <>
-                        <div className="flex items-center gap-1.5 pb-2 border-b border-white/5 select-none">
-                          <Info size={16} className="text-brand-blue" />
-                          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                            Hybrid Analysis & Insights
-                          </span>
-                        </div>
-                        
-                        {/* Complexity Card */}
-                        <div className="grid grid-cols-2 gap-3.5 select-none">
-                          <div className="p-3 bg-brand-blue/5 border border-brand-blue/10 rounded-xl flex flex-col">
-                            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Estimated Time Complexity</span>
-                            <span className="text-lg font-extrabold text-brand-blue mt-1">{displayTime}</span>
-                          </div>
-                          <div className="p-3 bg-brand-purple/5 border border-brand-purple/10 rounded-xl flex flex-col">
-                            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Estimated Space Complexity</span>
-                            <span className="text-lg font-extrabold text-brand-purple mt-1">{displaySpace}</span>
+                      {computedTab === "heap" && (
+                        <div className="animate-in fade-in duration-200">
+                          <div className="h-[360px]">
+                            <HeapVisualizer variables={variables} heap={heap} />
                           </div>
                         </div>
+                      )}
 
-                        {/* Execution Telemetry Card */}
-                        {analysis && (
-                          <div className="p-4 bg-dark-900 border border-white/5 rounded-xl flex flex-col gap-3 select-none">
-                            <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">Execution Telemetry</span>
-                            <div className="grid grid-cols-3 gap-2 text-center text-xs font-mono">
-                              <div className="p-2 bg-dark-950 border border-white/5 rounded-lg">
-                                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-0.5">Steps</div>
-                                <div className="text-sm font-bold text-slate-200">{analysis.metrics.step_count}</div>
-                              </div>
-                              <div className="p-2 bg-dark-950 border border-white/5 rounded-lg">
-                                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-0.5">Stack Depth</div>
-                                <div className="text-sm font-bold text-slate-200">{analysis.metrics.max_stack_depth}</div>
-                              </div>
-                              <div className="p-2 bg-dark-950 border border-white/5 rounded-lg">
-                                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-0.5">Heap Objects</div>
-                                <div className="text-sm font-bold text-slate-200">{analysis.metrics.max_heap_objects}</div>
-                              </div>
-                            </div>
+                      {computedTab === "stack" && (
+                        <div className="animate-in fade-in duration-200">
+                          <div className="h-full">
+                            <StackFrames
+                              scopes={scopes}
+                              selectedFrameIndex={selectedFrameIndex}
+                              setSelectedFrameIndex={setSelectedFrameIndex}
+                            />
                           </div>
-                        )}
-
-                        {/* Warnings & Suggestions Card */}
-                        <div className="p-4 bg-dark-900 border border-white/5 rounded-xl flex flex-col gap-2.5">
-                          <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider select-none">Code Quality & Warnings</span>
-                          {analysis && analysis.warnings && analysis.warnings.length > 0 ? (
-                            <ul className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
-                              {analysis.warnings.map((warn, i) => (
-                                <li key={i} className="text-xs text-amber-200 bg-amber-500/5 border border-amber-500/10 p-2.5 rounded-lg flex items-start gap-2 leading-relaxed animate-in fade-in slide-in-from-top-1 duration-150">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 mt-1.5 animate-pulse" />
-                                  <span>{warn}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <div className="text-xs text-emerald-400 bg-emerald-500/5 border border-emerald-500/10 p-3 rounded-lg flex items-center gap-2 select-none">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
-                              <span>No code issues detected. Execution trace is clean and optimized!</span>
-                            </div>
-                          )}
                         </div>
+                      )}
 
-                        {/* Performance Suggestions Card */}
-                        <div className="p-4 bg-dark-900 border border-white/5 rounded-xl flex flex-col gap-2.5">
-                          <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider select-none">Performance Optimizer Advice</span>
-                          {analysis && analysis.suggestions && analysis.suggestions.length > 0 ? (
-                            <ul className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
-                              {analysis.suggestions.map((sug, i) => (
-                                <li key={i} className="text-xs text-brand-cyan bg-brand-cyan/5 border border-brand-cyan/10 p-2.5 rounded-lg flex items-start gap-2 leading-relaxed animate-in fade-in slide-in-from-top-1 duration-150">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-brand-cyan shrink-0 mt-1.5 animate-pulse" />
-                                  <span>{sug.text}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <div className="text-xs text-slate-500 bg-white/5 border border-white/5 p-3 rounded-lg flex items-center gap-2 select-none">
-                              <span className="w-1.5 h-1.5 rounded-full bg-slate-600 shrink-0" />
-                              <span>No performance suggestions. Code layout is efficient.</span>
+                      {computedTab === "variables" && (
+                        <div className="bg-dark-950/40 p-4 rounded-xl border border-white/5 animate-in fade-in duration-200">
+                          <>
+                            <div className="flex items-center gap-1.5 pb-2 border-b border-white/5 mb-3 select-none">
+                              <Variable size={16} className="text-brand-cyan" />
+                              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                Local Variables ({selectedScope ? selectedScope.name : "none"})
+                              </span>
                             </div>
-                          )}
+                            <VariableList
+                              variables={variables}
+                              prevVariables={prevVariables}
+                              heap={heap}
+                              onMutateVariable={handleMutateVariable}
+                            />
+                          </>
                         </div>
-                      </>
+                      )}
+
+                      {computedTab === "insights" && (
+                        <div className="bg-dark-950/40 p-4 rounded-xl border border-white/5 animate-in fade-in duration-200 flex flex-col gap-4">
+                          <>
+                            <div className="flex items-center gap-1.5 pb-2 border-b border-white/5 select-none">
+                              <Info size={16} className="text-brand-blue" />
+                              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                Hybrid Analysis & Insights
+                              </span>
+                            </div>
+                            
+                            {/* Redesigned Metrics Grid */}
+                            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3.5 select-none">
+                              {/* Time Complexity Card */}
+                              <div className="p-3.5 bg-brand-blue/5 border border-brand-blue/15 text-brand-blue rounded-xl flex flex-col justify-between">
+                                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Time Complexity</span>
+                                <span className="text-lg font-black text-brand-blue mt-1.5">{displayTime}</span>
+                              </div>
+
+                              {/* Space Complexity Card */}
+                              <div className="p-3.5 bg-brand-purple/5 border border-brand-purple/15 text-brand-purple rounded-xl flex flex-col justify-between">
+                                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Space Complexity</span>
+                                <span className="text-lg font-black text-brand-purple mt-1.5">{displaySpace}</span>
+                              </div>
+
+                              {/* Current Iteration Card */}
+                              <div className="p-3.5 bg-white/5 border border-white/5 rounded-xl flex flex-col justify-between">
+                                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Current Iteration</span>
+                                <span className="text-lg font-mono font-bold text-slate-200 mt-1.5">
+                                  {variables && variables.i !== undefined 
+                                    ? variables.i 
+                                    : variables && variables.j !== undefined 
+                                    ? variables.j 
+                                    : "0"}
+                                </span>
+                              </div>
+
+                              {/* Comparisons Card */}
+                              <div className="p-3.5 bg-amber-500/5 border border-amber-500/15 text-amber-500 rounded-xl flex flex-col justify-between">
+                                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Comparisons</span>
+                                <span className="text-lg font-mono font-bold text-amber-500 mt-1.5">{comparisonsCount}</span>
+                              </div>
+
+                              {/* Assignments Card */}
+                              <div className="p-3.5 bg-emerald-500/5 border border-emerald-500/15 text-emerald-400 rounded-xl flex flex-col justify-between">
+                                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Assignments</span>
+                                <span className="text-lg font-mono font-bold text-emerald-400 mt-1.5">{assignmentsCount}</span>
+                              </div>
+
+                              {/* Function Calls Card */}
+                              <div className="p-3.5 bg-white/5 border border-white/5 rounded-xl flex flex-col justify-between">
+                                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Function Calls</span>
+                                <span className="text-lg font-mono font-bold text-slate-200 mt-1.5">
+                                  {scopes.length - 1}
+                                </span>
+                              </div>
+
+                              {/* Execution Status Card */}
+                              <div className={`p-3.5 border rounded-xl flex flex-col justify-between ${status.bgColor} ${status.borderColor}`}>
+                                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Execution Status</span>
+                                <span className={`text-xs sm:text-sm font-bold uppercase tracking-wider mt-1.5 ${status.textColor}`}>
+                                  {status.label}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Warnings & Suggestions Card */}
+                            <div className="p-4 bg-dark-900 border border-white/5 rounded-xl flex flex-col gap-2.5">
+                              <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider select-none">Code Quality & Warnings</span>
+                              {analysis && analysis.warnings && analysis.warnings.length > 0 ? (
+                                <ul className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                                  {analysis.warnings.map((warn, i) => (
+                                    <li key={i} className="text-xs text-amber-200 bg-amber-500/5 border border-amber-500/10 p-2.5 rounded-lg flex items-start gap-2 leading-relaxed animate-in fade-in slide-in-from-top-1 duration-150">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 mt-1.5 animate-pulse" />
+                                      <span>{warn}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <div className="text-xs text-emerald-400 bg-emerald-500/5 border border-emerald-500/10 p-3 rounded-lg flex items-center gap-2 select-none">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
+                                  <span>No code issues detected. Execution trace is clean and optimized!</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Performance Suggestions Card */}
+                            <div className="p-4 bg-dark-900 border border-white/5 rounded-xl flex flex-col gap-2.5">
+                              <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider select-none">Performance Optimizer Advice</span>
+                              {analysis && analysis.suggestions && analysis.suggestions.length > 0 ? (
+                                <ul className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                                  {analysis.suggestions.map((sug, i) => (
+                                    <li key={i} className="text-xs text-brand-cyan bg-brand-cyan/5 border border-brand-cyan/10 p-2.5 rounded-lg flex items-start gap-2 leading-relaxed animate-in fade-in slide-in-from-top-1 duration-150">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-brand-cyan shrink-0 mt-1.5 animate-pulse" />
+                                      <span>{sug.text}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <div className="text-xs text-slate-500 bg-white/5 border border-white/5 p-3 rounded-lg flex items-center gap-2 select-none">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-slate-600 shrink-0" />
+                                  <span>No performance suggestions. Code layout is efficient.</span>
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
 
-                {/* Small footer variable drawer when Heap/Array is focused */}
-                {["array", "heap"].includes(computedTab) && (
-                  <div className="flex-none bg-dark-950/40 p-3 rounded-xl border border-white/5">
-                    <div className="flex items-center gap-1.5 pb-1.5 border-b border-white/5 mb-2.5 select-none">
-                      <Variable size={16} className="text-brand-cyan" />
-                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                        Scope Variables ({selectedScope ? selectedScope.name : "none"})
-                      </span>
-                    </div>
-                    <VariableList
-                      variables={variables}
-                      prevVariables={prevVariables}
-                      heap={heap}
-                      onMutateVariable={handleMutateVariable}
-                    />
-                  </div>
-                )}
-
               </div>
+
+              {/* Current Step Explanation Panel */}
+              <StepExplanation
+                currentStepData={currentStepData}
+                nextStepData={trace[currentStep] || null}
+                prevStepData={prevStepData}
+                codeLines={code.split("\n")}
+                heap={heap}
+              />
 
               {/* Minimal stdout printer Console */}
               <TerminalConsole stdout={stdout} />

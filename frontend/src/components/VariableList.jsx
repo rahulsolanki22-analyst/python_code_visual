@@ -1,4 +1,34 @@
-import React from "react";
+import React, { useEffect, useState, useRef } from "react";
+import { motion, animate } from "framer-motion";
+
+// Helper component to animate numeric values smoothly
+function AnimatedNumber({ value }) {
+  const [displayVal, setDisplayVal] = useState(value);
+  const prevValueRef = useRef(value);
+
+  useEffect(() => {
+    const prev = prevValueRef.current;
+    prevValueRef.current = value;
+
+    const prevNum = Number(prev);
+    const currNum = Number(value);
+
+    if (!isNaN(prevNum) && !isNaN(currNum) && prev !== value) {
+      const controls = animate(prevNum, currNum, {
+        duration: 0.3, // 300ms animation duration
+        onUpdate: (latest) => {
+          const isInteger = Number.isInteger(currNum) && Number.isInteger(prevNum);
+          setDisplayVal(isInteger ? Math.round(latest) : parseFloat(latest.toFixed(2)));
+        }
+      });
+      return () => controls.stop();
+    } else {
+      setDisplayVal(value);
+    }
+  }, [value]);
+
+  return <span>{displayVal}</span>;
+}
 
 // Helper to stringify values recursively, resolving references inside lists/dicts
 export function resolveValueString(val, heap) {
@@ -30,12 +60,12 @@ export function resolveValueString(val, heap) {
 
 export default function VariableList({ variables, prevVariables, heap, onMutateVariable }) {
   const varKeys = Object.keys(variables || {}).sort();
-  const [editingKey, setEditingKey] = React.useState(null);
-  const [editValue, setEditValue] = React.useState("");
+  const [editingKey, setEditingKey] = useState(null);
+  const [editValue, setEditValue] = useState("");
 
   if (varKeys.length === 0) {
     return (
-      <div className="text-xs text-slate-400 font-bold italic py-1 select-none">
+      <div className="text-xs text-slate-400 font-bold italic py-4 text-center select-none bg-dark-800/40 border border-dashed border-white/5 rounded-xl w-full">
         No active variables in scope
       </div>
     );
@@ -47,17 +77,19 @@ export default function VariableList({ variables, prevVariables, heap, onMutateV
   };
 
   return (
-    <div className="flex flex-wrap gap-2.5">
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(130px,1fr))] gap-3 w-full">
       {varKeys.map((key) => {
         const value = variables[key];
         const changed = hasChanged(key);
         const resolvedStr = resolveValueString(value, heap);
         const isRef = value && typeof value === "object" && value.type === "ref";
+        const isNumber = typeof value === "number";
 
         if (editingKey === key) {
           return (
-            <form
+            <motion.form
               key={key}
+              layout
               onSubmit={(e) => {
                 e.preventDefault();
                 if (onMutateVariable) {
@@ -65,10 +97,14 @@ export default function VariableList({ variables, prevVariables, heap, onMutateV
                 }
                 setEditingKey(null);
               }}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-brand-blue/50 bg-brand-blue/10 animate-in fade-in duration-150"
+              className="flex flex-col justify-between p-3 rounded-xl border border-brand-blue/50 bg-brand-blue/10 min-h-[64px] animate-in fade-in duration-150"
             >
-              <span className="font-bold text-slate-400 select-none text-xs">{key}</span>
-              <span className="text-slate-500 select-none">:</span>
+              <div className="flex items-center justify-between select-none">
+                <span className="font-bold text-[10px] tracking-wider text-slate-400 uppercase">
+                  {key}
+                </span>
+                <span className="text-[8px] font-bold text-brand-blue uppercase">Edit</span>
+              </div>
               <input
                 autoFocus
                 value={editValue}
@@ -77,15 +113,31 @@ export default function VariableList({ variables, prevVariables, heap, onMutateV
                 onKeyDown={(e) => {
                   if (e.key === "Escape") setEditingKey(null);
                 }}
-                className="bg-dark-950 text-slate-200 border border-white/10 rounded px-1.5 py-0.5 text-xs font-mono w-24 focus:outline-none focus:border-brand-blue/80"
+                className="bg-dark-950 text-slate-200 border border-white/10 rounded px-1.5 py-0.5 text-xs font-mono w-full focus:outline-none focus:border-brand-blue/80 mt-1"
               />
-            </form>
+            </motion.form>
           );
         }
 
         return (
-          <div
+          <motion.div
             key={key}
+            layout
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ 
+              scale: changed ? [1, 1.03, 1] : 1,
+              borderColor: changed 
+                ? ["rgba(59, 130, 246, 0.2)", "rgba(59, 130, 246, 1)", "rgba(59, 130, 246, 0.4)"] 
+                : "rgba(255, 255, 255, 0.05)",
+              boxShadow: changed
+                ? ["0 0 0px rgba(59, 130, 246, 0)", "0 0 20px rgba(59, 130, 246, 0.4)", "0 0 8px rgba(59, 130, 246, 0.15)"]
+                : "none"
+            }}
+            transition={{ 
+              scale: { type: "spring", stiffness: 350, damping: 25 },
+              borderColor: { duration: 0.3, ease: "easeInOut" },
+              boxShadow: { duration: 0.3, ease: "easeInOut" }
+            }}
             onDoubleClick={() => {
               if (onMutateVariable) {
                 setEditingKey(key);
@@ -93,28 +145,40 @@ export default function VariableList({ variables, prevVariables, heap, onMutateV
               }
             }}
             title={onMutateVariable ? "Double-click to mutate variable value" : ""}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-mono transition-all duration-300 ${
-              onMutateVariable ? "cursor-edit select-none hover:border-brand-blue/30" : ""
+            className={`relative group flex flex-col justify-between p-3 rounded-xl border transition-all duration-350 min-h-[64px] ${
+              onMutateVariable ? "cursor-pointer select-none" : ""
             } ${
               changed
-                ? "bg-brand-blue/10 border-brand-blue/30 text-brand-blue shadow-glow-blue active-execution-glow"
-                : "bg-dark-900/60 border-white/5 text-slate-300"
+                ? "bg-brand-blue/10 text-brand-blue active-execution-glow"
+                : "bg-dark-800 text-slate-300 hover:border-white/10 hover:bg-dark-800/80"
             }`}
           >
-            <span className="font-bold text-slate-400 select-none">{key}</span>
-            <span className="text-slate-600 select-none">:</span>
-            <span
-              className={`font-bold ${
-                isRef && heap[value.id]?.type === "object"
-                  ? "text-brand-purple"
-                  : isRef
-                  ? "text-brand-blue"
-                  : "text-emerald-300"
-              }`}
-            >
-              {resolvedStr}
-            </span>
-          </div>
+            {/* Top Row: Name and optional changed badge */}
+            <div className="flex items-center justify-between gap-2 select-none">
+              <span className="font-bold text-[10px] tracking-wider text-slate-400 uppercase truncate">
+                {key}
+              </span>
+              {changed && (
+                <span className="w-1.5 h-1.5 rounded-full bg-brand-blue animate-pulse" />
+              )}
+            </div>
+
+            {/* Bottom Row: Resolved Value */}
+            <div className="mt-1 flex items-baseline justify-between overflow-hidden">
+              <span
+                className={`font-mono text-xs font-bold truncate ${
+                  isRef && heap[value.id]?.type === "object"
+                    ? "text-brand-purple"
+                    : isRef
+                    ? "text-brand-blue"
+                    : "text-emerald-300"
+                }`}
+                title={resolvedStr}
+              >
+                {isNumber ? <AnimatedNumber value={value} /> : resolvedStr}
+              </span>
+            </div>
+          </motion.div>
         );
       })}
     </div>

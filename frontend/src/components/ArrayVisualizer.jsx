@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Grid } from "lucide-react";
 import { resolveValueString } from "./VariableList";
 
-export default function ArrayVisualizer({ variables, prevVariables, heap }) {
+export default function ArrayVisualizer({ variables, prevVariables, heap, prevHeap }) {
   // Find all list/array variables in the active scope
   const listVars = [];
   
@@ -36,7 +36,7 @@ export default function ArrayVisualizer({ variables, prevVariables, heap }) {
     if (!prevVariables || !(varName in prevVariables)) return null;
     const val = prevVariables[varName];
     if (val && typeof val === "object" && val.type === "ref") {
-      const heapObj = heap[val.id];
+      const heapObj = prevHeap ? prevHeap[val.id] : null;
       if (heapObj && (heapObj.type === "list" || heapObj.type === "tuple")) {
         return heapObj.value;
       }
@@ -57,7 +57,55 @@ export default function ArrayVisualizer({ variables, prevVariables, heap }) {
         }
       }
     });
+
+    // Add virtual j+1 pointer when inside nested sorting loops comparing j with j+1
+    if ("j" in variables && typeof variables.j === "number" && index === variables.j + 1) {
+      ptrs.push("j+1");
+    }
+
     return ptrs;
+  };
+
+  const getHighlightState = (index, ptrs, items) => {
+    if (!variables) return "normal";
+
+    // Active comparison: mid, j, or j+1
+    if (ptrs.includes("mid") || ptrs.includes("j") || ptrs.includes("j+1")) {
+      return "comparison";
+    }
+    // Current element: i, idx, curr, p
+    if (ptrs.includes("i") || ptrs.includes("idx") || ptrs.includes("curr") || ptrs.includes("p")) {
+      return "current";
+    }
+
+    // Visited elements
+    // 1. If i is in variables:
+    if ("i" in variables && typeof variables.i === "number") {
+      const iVal = variables.i;
+      const isBubble = "j" in variables;
+      const isInsertion = "key" in variables;
+
+      if (isBubble && index >= items.length - iVal) {
+        return "visited"; // Bubble sort sorted portion at end
+      }
+      if (isInsertion && index < iVal) {
+        return "visited"; // Insertion sort sorted portion at start
+      }
+      if (!isBubble && !isInsertion && index < iVal) {
+        return "visited"; // General left-to-right loops
+      }
+    }
+
+    // 2. Binary search interval outside [low, high]:
+    if ("low" in variables && typeof variables.low === "number" && "high" in variables && typeof variables.high === "number") {
+      const low = variables.low;
+      const high = variables.high;
+      if (index < low || index > high) {
+        return "visited"; // Discarded search space
+      }
+    }
+
+    return "normal";
   };
 
   return (
@@ -90,7 +138,7 @@ export default function ArrayVisualizer({ variables, prevVariables, heap }) {
             </div>
 
             {/* Boxes Display with Pointers */}
-            <div className="flex flex-wrap gap-3 py-2 items-start justify-start">
+            <div className="flex flex-wrap gap-5 py-4 items-start justify-center">
               <AnimatePresence initial={false}>
                 {items.map((item, index) => {
                   const isChanged = changedIndices.includes(index);
@@ -98,6 +146,45 @@ export default function ArrayVisualizer({ variables, prevVariables, heap }) {
                   const isNestedRef = item && typeof item === "object" && item.type === "ref";
                   const ptrs = getPointersForIndex(index);
                   const isPointed = ptrs.length > 0;
+                  
+                  // Compute highlight state
+                  const state = getHighlightState(index, ptrs, items);
+
+                  // Determine colors based on state
+                  let targetBg = "var(--box-bg)";
+                  let targetBorder = "var(--box-border)";
+                  let targetShadow = "none";
+
+                  if (isChanged) {
+                    targetBg = "rgba(6, 182, 212, 0.15)";
+                    targetBorder = "rgba(6, 182, 212, 0.6)";
+                    targetShadow = "0 0 16px rgba(6, 182, 212, 0.25)";
+                  } else if (state === "comparison") {
+                    targetBg = "rgba(245, 158, 11, 0.15)";
+                    targetBorder = "rgba(245, 158, 11, 0.6)";
+                    targetShadow = "0 0 16px rgba(245, 158, 11, 0.25)";
+                  } else if (state === "current") {
+                    targetBg = "rgba(59, 130, 246, 0.15)";
+                    targetBorder = "rgba(59, 130, 246, 0.6)";
+                    targetShadow = "var(--shadow-glow-blue)";
+                  } else if (state === "visited") {
+                    targetBg = "rgba(16, 185, 129, 0.08)";
+                    targetBorder = "rgba(16, 185, 129, 0.4)";
+                    targetShadow = "none";
+                  }
+
+                  let textClass = "text-slate-700 dark:text-slate-300";
+                  if (isChanged) {
+                    textClass = "text-brand-cyan font-black";
+                  } else if (state === "comparison") {
+                    textClass = "text-amber-600 dark:text-amber-400 font-extrabold";
+                  } else if (state === "current") {
+                    textClass = "text-brand-blue font-black";
+                  } else if (state === "visited") {
+                    textClass = "text-emerald-600 dark:text-emerald-400 font-semibold";
+                  } else if (isNestedRef) {
+                    textClass = "text-brand-purple font-bold";
+                  }
 
                   return (
                     <motion.div
@@ -107,42 +194,43 @@ export default function ArrayVisualizer({ variables, prevVariables, heap }) {
                       animate={{ scale: 1, opacity: 1 }}
                       exit={{ scale: 0.8, opacity: 0 }}
                       transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                      className="flex flex-col items-center min-w-[52px]"
+                      className="flex flex-col items-center min-w-[64px]"
                     >
+                      {/* Pointer Markers above the box */}
+                      {isPointed ? (
+                        <motion.div 
+                          initial={{ y: -5, opacity: 0 }}
+                          animate={{ y: 0, opacity: 1 }}
+                          className="flex flex-col items-center mb-1.5 select-none w-full min-h-[48px] justify-end"
+                        >
+                          <div className="flex flex-wrap gap-1 justify-center mb-1 max-w-[64px]">
+                            {ptrs.map(ptr => (
+                              <span 
+                                key={ptr} 
+                                className="px-1.5 py-0.5 bg-brand-blue/10 border border-brand-blue/30 text-brand-blue rounded text-[9px] font-extrabold uppercase shadow-sm truncate max-w-[60px] text-center"
+                                title={ptr}
+                              >
+                                {ptr}
+                              </span>
+                            ))}
+                          </div>
+                          <span className="text-xs text-brand-blue font-black leading-none animate-bounce">↓</span>
+                        </motion.div>
+                      ) : (
+                        // Fixed spacer anchor to avoid grid jump updates when index moves
+                        <div className="h-[48px] w-1" />
+                      )}
+
                       {/* Element Value Box */}
                       <motion.div
                         animate={{
-                          scale: isChanged ? [1, 1.1, 1] : 1,
-                          backgroundColor: isChanged 
-                            ? "rgba(6, 182, 212, 0.12)" /* Cyan for comparison/changes */
-                            : isPointed 
-                            ? "rgba(59, 130, 246, 0.08)" /* Blue for pointer-active */
-                            : isNestedRef
-                            ? "rgba(139, 92, 246, 0.08)" /* Purple for reference */
-                            : "var(--box-bg)",  /* Theme-aware box background */
-                          borderColor: isChanged 
-                            ? "rgba(6, 182, 212, 0.5)" 
-                            : isPointed 
-                            ? "rgba(59, 130, 246, 0.4)" 
-                            : isNestedRef
-                            ? "rgba(139, 92, 246, 0.3)"
-                            : "var(--box-border)",  /* Theme-aware box border */
-                          boxShadow: isChanged
-                            ? "0 0 12px rgba(6, 182, 212, 0.15)"
-                            : isPointed
-                            ? "0 0 12px rgba(59, 130, 246, 0.15)"
-                            : "none"
+                          scale: (isChanged || state === "current" || state === "comparison") ? [1, 1.05, 1] : 1,
+                          backgroundColor: targetBg,
+                          borderColor: targetBorder,
+                          boxShadow: targetShadow
                         }}
                         transition={{ duration: 0.3 }}
-                        className={`w-12 h-12 rounded-xl border flex items-center justify-center font-mono font-black text-sm select-all cursor-default ${
-                          isChanged 
-                            ? "text-brand-cyan" 
-                            : isPointed
-                            ? "text-brand-blue"
-                            : isNestedRef
-                            ? "text-brand-purple"
-                            : "text-emerald-300"
-                        }`}
+                        className={`w-16 h-16 rounded-xl border flex items-center justify-center font-mono text-base select-all cursor-default transition-colors duration-300 ${textClass}`}
                       >
                         {itemStr}
                       </motion.div>
@@ -151,31 +239,6 @@ export default function ArrayVisualizer({ variables, prevVariables, heap }) {
                       <span className="text-[9px] text-slate-500 font-mono font-bold mt-1.5 select-none">
                         idx {index}
                       </span>
-
-                      {/* Pointer Markers */}
-                      {isPointed ? (
-                        <motion.div 
-                          initial={{ y: 5, opacity: 0 }}
-                          animate={{ y: 0, opacity: 1 }}
-                          className="flex flex-col items-center mt-1 select-none w-full"
-                        >
-                          <span className="text-[9px] text-brand-blue font-black leading-none">↑</span>
-                          <div className="flex flex-col gap-1 items-center mt-1 w-full">
-                            {ptrs.map(ptr => (
-                              <span 
-                                key={ptr} 
-                                className="px-1.5 py-0.5 bg-brand-blue/10 border border-brand-blue/30 text-brand-blue rounded text-[8px] font-bold leading-none uppercase shadow-sm truncate max-w-[50px] text-center"
-                                title={ptr}
-                              >
-                                {ptr}
-                              </span>
-                            ))}
-                          </div>
-                        </motion.div>
-                      ) : (
-                        // Fixed spacer anchor to avoid grid jump updates when index moves
-                        <div className="h-9 w-1" />
-                      )}
                     </motion.div>
                   );
                 })}
